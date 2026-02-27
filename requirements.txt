@@ -1,0 +1,4 @@
+Appium-Python-Client>=3.0.0
+pyyaml>=6.0
+requests>=2.31.0
+pyperclip>=1.8.0

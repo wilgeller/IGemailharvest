@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Runtime state
+.account_state.json
+*.tmp
+
+# Output (keep directory structure, ignore generated files)
+output/emails.csv
+output/logs/*.log
+
+# macOS
+.DS_Store

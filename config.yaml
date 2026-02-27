@@ -1,0 +1,30 @@
+device:
+  adb_host: "192.168.1.179"
+  adb_port: 5555
+
+appium:
+  server_url: "http://127.0.0.1:4723"
+  implicit_wait: 0
+
+accounts:
+  - username: "account_1"
+    daily_cap: 100
+  - username: "account_2"
+    daily_cap: 100
+
+delays:
+  between_profiles: [8, 20]
+  after_load: [2, 5]
+  after_tap: [1.5, 4]
+  after_extraction: [1, 3]
+  idle_pause: [15, 45]
+  idle_frequency: [8, 15]
+  profile_load_timeout: 10.0
+  profile_load_poll: 0.5
+
+output:
+  csv_path: "output/emails.csv"
+  webhook_url: ""   # optional — leave empty to disable
+
+log_dir: "output/logs"
+account_state_path: ".account_state.json"
