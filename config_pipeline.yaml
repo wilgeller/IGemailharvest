@@ -1,0 +1,22 @@
+# Verify + sequence pipeline config. Lives on Pi 3 only.
+# Fill in the two API keys at deploy time — do not commit real keys.
+
+sheet:
+  sheet_id: "1Dpsgm365TRDHUTLbW1FFpGG2Nn4BJdA89DLofJoS6AE"
+  token_path: "token.json"
+  results_tab: "Results"      # verify actual tab name at deploy
+  handle_column: "handle"     # verify actual header names at deploy
+  email_column: "email"
+
+millionverifier:
+  api_key: "FILL_ME_IN"
+  min_credits_warn: 500
+
+instantly:
+  api_key: "FILL_ME_IN"
+  campaign_id: "FILL_ME_IN"   # UUID from the Instantly campaign URL
+
+slack_webhook_url: "FILL_ME_IN"  # same zapier webhook as harvest runs
+
+state_path: "output/.pipeline_state.json"
+log_dir: "output/logs"
