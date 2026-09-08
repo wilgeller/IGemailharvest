@@ -101,6 +101,11 @@ class SheetsClient:
         )
 
 
+def quote_tab(tab: str) -> str:
+    """Quote a tab name for A1 notation (handles apostrophes, e.g. PI's)."""
+    return "'%s'" % tab.replace("'", "''")
+
+
 def col_letter(index: int) -> str:
     """0-based column index -> A1 letter(s)."""
     letters = ""
@@ -254,7 +259,7 @@ def run(config: dict) -> str:
     state = load_state(state_path)
 
     sheets = SheetsClient(sheet_cfg["token_path"], sheet_cfg["sheet_id"])
-    tab = sheet_cfg["results_tab"]
+    tab = quote_tab(sheet_cfg["results_tab"])
 
     rows = sheets.get_values("%s!A1:ZZ" % tab)
     if not rows:

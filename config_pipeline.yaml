@@ -4,8 +4,8 @@
 sheet:
   sheet_id: "1Dpsgm365TRDHUTLbW1FFpGG2Nn4BJdA89DLofJoS6AE"
   token_path: "token.json"
-  results_tab: "Results"      # verify actual tab name at deploy
-  handle_column: "handle"     # verify actual header names at deploy
+  results_tab: "PI's"         # first tab — where all Pis write results
+  handle_column: "handle"
   email_column: "email"
 
 millionverifier:
