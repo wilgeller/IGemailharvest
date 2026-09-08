@@ -344,6 +344,9 @@ def run(config: dict) -> str:
         msg = "Pipeline: no new emails to verify."
         if streak >= 2:
             msg += " ⚠️ %d runs in a row with nothing to process — check Sheets auth/columns." % streak
+            credits = mv_credits(mv_cfg["api_key"])
+            if credits is not None:
+                msg += " MV balance: %s credits." % format(credits, ",")
             slack_notify(slack_url, msg)
         return msg
     state["empty_streak"] = 0
@@ -407,10 +410,17 @@ def run(config: dict) -> str:
     state["last_run"] = datetime.now(timezone.utc).isoformat()
     save_state(state_path, state)
 
-    summary = "Pipeline: verified %d emails — %s. Pushed %d to Instantly.%s%s" % (
+    # Re-fetch so the summary shows the post-run balance.
+    credits_after = mv_credits(mv_cfg["api_key"])
+    balance_note = ""
+    if credits_after is not None:
+        balance_note = " MV balance: %s credits." % format(credits_after, ",")
+
+    summary = "Pipeline: verified %d emails — %s. Pushed %d to Instantly.%s%s%s" % (
         len(pending),
         ", ".join("%d %s" % (v, k) for k, v in sorted(counts.items())),
         len(pushed),
+        balance_note,
         push_note,
         low_credit_note,
     )
@@ -440,10 +450,14 @@ def main() -> int:
         return 0
     except Exception as exc:
         logger.exception("Pipeline run failed")
-        slack_notify(
-            config.get("slack_webhook_url", ""),
-            "🚨 Pipeline run failed: %s" % exc,
-        )
+        msg = "🚨 Pipeline run failed: %s" % exc
+        try:
+            credits = mv_credits(config["millionverifier"]["api_key"])
+            if credits is not None:
+                msg += " MV balance: %s credits." % format(credits, ",")
+        except Exception:
+            pass
+        slack_notify(config.get("slack_webhook_url", ""), msg)
         return 1
 
 
