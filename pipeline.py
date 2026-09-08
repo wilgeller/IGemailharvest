@@ -259,68 +259,82 @@ def run(config: dict) -> str:
     state = load_state(state_path)
 
     sheets = SheetsClient(sheet_cfg["token_path"], sheet_cfg["sheet_id"])
-    tab = quote_tab(sheet_cfg["results_tab"])
-
-    rows = sheets.get_values("%s!A1:ZZ" % tab)
-    if not rows:
-        raise RuntimeError("Results tab '%s' returned no rows (auth/tab-name problem?)" % tab)
-
-    header = [h.strip() for h in rows[0]]
-
-    def col_idx(name: str) -> int:
-        for i, h in enumerate(header):
-            if h.lower() == name.lower():
-                return i
-        return -1
-
-    handle_i = col_idx(sheet_cfg["handle_column"])
-    email_i = col_idx(sheet_cfg["email_column"])
-    if handle_i < 0 or email_i < 0:
-        raise RuntimeError(
-            "Could not find columns '%s'/'%s' in header %r"
-            % (sheet_cfg["handle_column"], sheet_cfg["email_column"], header)
-        )
-
-    # Ensure pipeline columns exist, creating them at the end of the header.
-    mv_i = col_idx("mv_result")
-    seq_i = col_idx("sequenced_at")
-    new_headers = []
-    if mv_i < 0:
-        mv_i = len(header) + len(new_headers)
-        new_headers.append("mv_result")
-    if seq_i < 0:
-        seq_i = len(header) + len(new_headers)
-        new_headers.append("sequenced_at")
-    if new_headers:
-        start = len(header)
-        sheets.update_values(
-            "%s!%s1:%s1" % (tab, col_letter(start), col_letter(start + len(new_headers) - 1)),
-            [new_headers],
-        )
-        logger.info("Added header columns: %s", new_headers)
+    tabs = sheet_cfg.get("results_tabs") or [sheet_cfg["results_tab"]]
 
     def cell(row: list, i: int) -> str:
         return row[i].strip() if i < len(row) else ""
 
-    # Collect unverified rows; dedupe by email (first occurrence wins).
-    pending = {}  # email -> {row_num, handle, email}
-    duplicates = []  # row numbers marked duplicate
-    for n, row in enumerate(rows[1:], start=2):
-        email = cell(row, email_i).lower()
-        if not email or cell(row, mv_i):
-            continue
-        if email in pending:
-            duplicates.append(n)
-        else:
-            pending[email] = {"row": n, "email": email, "handle": cell(row, handle_i)}
+    # Collect unverified rows across all tabs; dedupe by email globally
+    # (first occurrence wins, later ones marked "duplicate").
+    pending = {}  # email -> {tab, mv_col, seq_col, row, handle}
+    tab_cols = {}  # quoted tab -> (mv_col, seq_col)
+    pre_updates = []  # duplicate / malformed markings
 
-    mv_col = col_letter(mv_i)
-    seq_col = col_letter(seq_i)
+    for raw_tab in tabs:
+        tab = quote_tab(raw_tab)
+        rows = sheets.get_values("%s!A1:ZZ" % tab)
+        if not rows:
+            raise RuntimeError(
+                "Tab '%s' returned no rows (auth/tab-name problem?)" % raw_tab
+            )
+        header = [h.strip() for h in rows[0]]
 
-    if duplicates:
-        sheets.batch_update_values(
-            [("%s!%s%d" % (tab, mv_col, n), [["duplicate"]]) for n in duplicates]
-        )
+        def col_idx(name: str) -> int:
+            for i, h in enumerate(header):
+                if h.lower() == name.lower():
+                    return i
+            return -1
+
+        handle_i = col_idx(sheet_cfg["handle_column"])
+        email_i = col_idx(sheet_cfg["email_column"])
+        if handle_i < 0 or email_i < 0:
+            raise RuntimeError(
+                "Could not find columns '%s'/'%s' in tab '%s' header %r"
+                % (sheet_cfg["handle_column"], sheet_cfg["email_column"], raw_tab, header)
+            )
+
+        # Ensure pipeline columns exist, creating them at the end of the header.
+        mv_i = col_idx("mv_result")
+        seq_i = col_idx("sequenced_at")
+        new_headers = []
+        if mv_i < 0:
+            mv_i = len(header) + len(new_headers)
+            new_headers.append("mv_result")
+        if seq_i < 0:
+            seq_i = len(header) + len(new_headers)
+            new_headers.append("sequenced_at")
+        if new_headers:
+            start = len(header)
+            sheets.update_values(
+                "%s!%s1:%s1"
+                % (tab, col_letter(start), col_letter(start + len(new_headers) - 1)),
+                [new_headers],
+            )
+            logger.info("[%s] added header columns: %s", raw_tab, new_headers)
+
+        mv_col = col_letter(mv_i)
+        seq_col = col_letter(seq_i)
+        tab_cols[tab] = (mv_col, seq_col)
+
+        for n, row in enumerate(rows[1:], start=2):
+            email = cell(row, email_i).lower()
+            if not email or cell(row, mv_i):
+                continue
+            if "@" not in email or "." not in email.split("@")[-1]:
+                pre_updates.append(("%s!%s%d" % (tab, mv_col, n), [["malformed"]]))
+            elif email in pending:
+                pre_updates.append(("%s!%s%d" % (tab, mv_col, n), [["duplicate"]]))
+            else:
+                pending[email] = {
+                    "tab": tab,
+                    "mv_col": mv_col,
+                    "seq_col": seq_col,
+                    "row": n,
+                    "email": email,
+                    "handle": cell(row, handle_i),
+                }
+
+    sheets.batch_update_values(pre_updates)
 
     if not pending:
         streak = state.get("empty_streak", 0) + 1
@@ -360,13 +374,15 @@ def run(config: dict) -> str:
     for email, info in pending.items():
         result = results.get(email, "unknown")
         counts[result] = counts.get(result, 0) + 1
-        updates.append(("%s!%s%d" % (tab, mv_col, info["row"]), [[result]]))
+        updates.append(("%s!%s%d" % (info["tab"], info["mv_col"], info["row"]), [[result]]))
         if result == "ok":
             good_leads.append(
                 {
                     "email": email,
                     "handle": info["handle"],
                     "profile_url": "https://instagram.com/%s" % info["handle"],
+                    "tab": info["tab"],
+                    "seq_col": info["seq_col"],
                     "row": info["row"],
                 }
             )
@@ -380,7 +396,7 @@ def run(config: dict) -> str:
         pushed = instantly_push(inst_cfg["api_key"], inst_cfg["campaign_id"], good_leads)
         now = datetime.now(timezone.utc).isoformat()
         sheets.batch_update_values(
-            [("%s!%s%d" % (tab, seq_col, l["row"]), [[now]]) for l in pushed]
+            [("%s!%s%d" % (l["tab"], l["seq_col"], l["row"]), [[now]]) for l in pushed]
         )
         if len(pushed) < len(good_leads):
             push_note = "\n⚠️ Instantly rejected %d of %d leads — see pipeline log." % (

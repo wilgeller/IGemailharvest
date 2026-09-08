@@ -4,7 +4,9 @@
 sheet:
   sheet_id: "1Dpsgm365TRDHUTLbW1FFpGG2Nn4BJdA89DLofJoS6AE"
   token_path: "token.json"
-  results_tab: "PI's"         # first tab — where all Pis write results
+  results_tabs:               # all tabs whose emails get verified + sequenced
+    - "PI's"                  # harvest results from all Pis
+    - "DM Sheet"              # DM watcher leads (Pi 9)
   handle_column: "handle"
   email_column: "email"
 
